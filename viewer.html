@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Binary Tree Debugger</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; }
+        #network { width: 800px; height: 500px; border: 1px solid #ddd; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .controls { margin: 20px; display: flex; gap: 10px; align-items: center; }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; }
+        button:disabled { background: #ccc; }
+        #status { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px; height: 30px; }
+        #step-counter { color: #666; }
+    </style>
+</head>
+<body>
+
+    <h2>🕵️ Spy Tree Visualizer</h2>
+    <div id="status">Waiting for data...</div>
+    <div id="network"></div>
+
+    <div class="controls">
+        <button onclick="prevStep()" id="btn-prev">⬅ Previous</button>
+        <span id="step-counter">Step 0 / 0</span>
+        <button onclick="nextStep()" id="btn-next">Next ➡</button>
+    </div>
+
+    <script src="tree_data.js"></script>
+
+    <script type="text/javascript">
+        let currentStep = 0;
+        let network = null;
+
+        // 1. Initialize the Network Graph
+        function initGraph() {
+            const container = document.getElementById('network');
+            const data = { nodes: [], edges: [] };
+            const options = {
+                layout: {
+                    hierarchical: {
+                        direction: 'UD', // Up-Down layout
+                        sortMethod: 'directed',
+                        levelSeparation: 100,
+                        nodeSpacing: 100
+                    }
+                },
+                physics: false, // Turn off bouncy physics for a stable tree
+                nodes: {
+                    shape: 'circle',
+                    color: { background: '#97C2FC', border: '#2B7CE9' },
+                    font: { size: 20 }
+                },
+                edges: {
+                    arrows: 'to',
+                    smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 }
+                }
+            };
+            network = new vis.Network(container, data, options);
+            updateView();
+        }
+
+        // 2. Helper: Convert your nested JSON tree to Flat Nodes/Edges
+        function parseTreeToGraph(node, nodes = [], edges = [], parentId = null) {
+            if (!node) return;
+
+            const myId = String(node.id); 
+            
+            // 1. Add Node (if new)
+            const exists = nodes.some(n => n.id === myId);
+            if (!exists) {
+                nodes.push({ 
+                    id: myId, 
+                    label: node.name,
+                    color: node.name === "None" ? { background: '#dddddd', border: '#aaaaaa' } : undefined,
+                    shape: node.name === "None" ? 'box' : 'circle'
+                });
+            }
+
+            // 2. Add Standard Edge (Parent -> Child)
+            if (parentId !== null) {
+                const pId = String(parentId);
+                const edgeExists = edges.some(e => e.from === pId && e.to === myId && !e.dashes); // Check for solid edge
+                if (!edgeExists) {
+                    edges.push({ from: pId, to: myId });
+                }
+            }
+
+            // Recurse children
+            if (node.children) {
+                parseTreeToGraph(node.children[0], nodes, edges, myId); 
+                parseTreeToGraph(node.children[1], nodes, edges, myId); 
+            }
+            
+            // 3. Add Parent Pointer (The Trick)
+            if (node.parent) {
+                const pId = String(node.parent);
+                
+                // Check if dashed edge already exists
+                // Note: We check 'from: pId' because of our trick below
+                const pEdgeExists = edges.some(e => e.from === pId && e.to === myId && e.dashes);
+                
+                if (!pEdgeExists) {
+                    edges.push({ 
+                        from: pId,     // TRICK: Define geometry as Parent -> Child (Downwards)
+                        to: myId, 
+                        arrows: 'from', // TRICK: Draw arrow at the START (pointing up to Parent)
+                        dashes: true, 
+                        color: { color: '#FF8800' },
+                        smooth: { type: 'curvedCW', roundness: 0.2 } // Curve it so it doesn't overlap the blue line
+                    });
+                }
+            }
+        }
+
+
+        // 3. Update the display for the current step
+        function updateView() {
+            if (!TREE_HISTORY || TREE_HISTORY.length === 0) return;
+
+            const stepData = TREE_HISTORY[currentStep];
+            
+            // Update Text
+            document.getElementById('status').innerText = `Action: ${stepData.action}`;
+            document.getElementById('step-counter').innerText = `Step ${currentStep + 1} / ${TREE_HISTORY.length}`;
+
+            // Check buttons
+            document.getElementById('btn-prev').disabled = currentStep === 0;
+            document.getElementById('btn-next').disabled = currentStep === TREE_HISTORY.length - 1;
+
+            // Prepare Graph Data
+            const nodes = [];
+            const edges = [];
+            
+            const snapshot = stepData.snapshot;
+
+            if (snapshot) {
+                // CASE A: Snapshot is a list (Forest) - YOUR NEW CODE
+                if (Array.isArray(snapshot)) {
+                    snapshot.forEach(root => {
+                        parseTreeToGraph(root, nodes, edges);
+                    });
+                } 
+                // CASE B: Snapshot is a single object (Legacy support)
+                else {
+                    parseTreeToGraph(snapshot, nodes, edges);
+                }
+            }
+
+            // Highlight the active node from the log
+            const activeNodeId = String(stepData.node);
+            
+            // Find the node in the flattened list we just created
+            const activeNode = nodes.find(n => n.id === activeNodeId);
+            
+            if (activeNode) {
+                activeNode.color = { background: '#ff0000', border: '#darkred' }; // Red for active
+                activeNode.font = { color: 'white' };
+            }
+
+            // Render
+            network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+        }
+
+        // 4. Controls
+        function nextStep() {
+            if (currentStep < TREE_HISTORY.length - 1) {
+                currentStep++;
+                updateView();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateView();
+            }
+        }
+
+        // Start
+        window.onload = initGraph;
+    </script>
+</body>
+</html>
