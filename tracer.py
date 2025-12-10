@@ -76,7 +76,7 @@ def serialize_forest(root_node, config, registered_nodes_dict):
 
     return subtrees
 
-def serialize_tree(node, config, visited_ids, parent_id=None):
+def serialize_tree(node, config, visited_ids):
     if node is None:
         return None
 
@@ -96,13 +96,20 @@ def serialize_tree(node, config, visited_ids, parent_id=None):
 
     node_left = getattr(node, config["left"], None)
     node_right = getattr(node, config["right"], None)
+    node_parent = getattr(node, config["parent"], None)
+    parent_id=None
+    if node_parent is not None:
+        while hasattr(node_parent, "_real_node"):
+            node_parent = node_parent._real_node
+            print(f"⚠️ WARNING: SpyNode detected inside SpyNode during serialization! ID: {id(node_parent)}, {getattr(node_parent, config['key'], '???')}")
+        parent_id = id(node_parent)
     
     return {
         "id": node_id, # This is an INT, the JS fix above handles it.
         "name": str(key),
         "children": [
-            serialize_tree(node_left, config, visited_ids, node_id),
-            serialize_tree(node_right, config, visited_ids, node_id)
+            serialize_tree(node_left, config, visited_ids),
+            serialize_tree(node_right, config, visited_ids)
         ],
         "parent": parent_id
     }
@@ -114,6 +121,7 @@ class SpyNode:
         # save check to avoid nested SpyNodes IMORTANRT!!!!
         while hasattr(real_node, "_real_node"):
             real_node = real_node._real_node
+            print(f"⚠️ WARNING: Unwrapping nested SpyNode during init! ID: {id(real_node)}, {getattr(real_node, config['key'], '???')}")    
         super().__setattr__("_real_node", real_node)
         super().__setattr__("_tracer", tracer)
         super().__setattr__("_config", config)
@@ -121,7 +129,6 @@ class SpyNode:
         
     # HELPER: Generate the same ID format as the serializer
     def _get_id(self, node):
-        # Handle None keys for sentinel nodes
         return id(node)
 
     # 1. TRAP READS (e.g., "current = current.left")
@@ -130,12 +137,11 @@ class SpyNode:
         if name in ["_real_node", "_tracer", "_config", "_get_id"]:
              return super().__getattribute__(name)
         
-        # If the code asks for _get_id, give it the Spy's method, don't pass to real node!
-        if name in ["_real_node", "_tracer", "_config", "_get_id"]:
-             return super().__getattribute__(name)
-        
         # Get internal helpers
         real_node = super().__getattribute__("_real_node")
+        while hasattr(real_node, "_real_node"):
+            real_node = real_node._real_node
+            print(f"⚠️ WARNING: Unwrapping nested SpyNode during getattribute! ID: {id(real_node)}, {getattr(real_node, self._config['key'], '???')}")
         tracer = super().__getattribute__("_tracer")
         config = super().__getattribute__("_config")
 
@@ -152,12 +158,14 @@ class SpyNode:
             if name in [config["left"], config["right"]]:
                 tracer.log(active_id, f"lokking at {name} child {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
             else:
-                tracer.log(active_id, f"lokking at parent")
+                tracer.log(active_id, f"lokking at parent {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
             
             
             # CRITICAL: If the child exists, wrap IT in a Spy too!
             # This ensures the spy follows the user down the tree.
             if child_node is not None:
+                if hasattr(child_node, "_real_node"):
+                    return child_node
                 return SpyNode(child_node, tracer, config)
             else:
                 return None
@@ -180,15 +188,17 @@ class SpyNode:
          
         real_node = super().__getattribute__("_real_node")
         tracer = super().__getattribute__("_tracer")
-        config = super().__getattribute__("_config")
-
+        config = super().__getattribute__("_config")        
+        
         actual_value = value
         if isinstance(value, SpyNode):
             actual_value = value._real_node
+            print(f" (unwrapped from SpyNode ID: {id(value)})")
+
         
         if name in [config["left"], config["right"], config["parent"]]:
             
-            # Perform the actual write on the real node
+            # Perform the actual write on the real nod
             setattr(real_node, name, actual_value)
             
             # Use the NEW ID format for logging
@@ -229,7 +239,11 @@ class spy_BinaryTree:
         if name == config["root"]:
             root_node = getattr(real_tree, config["root"])
             if root_node is not None:
-                # Wrap the root so traversal can be tracked from the very top
+                if isinstance(root_node, SpyNode):
+                    print(f"⚠️ WARNING: SpyNode detected inside SpyNode during root get! ID: {id(root_node)}, {getattr(root_node, config['key'], '???')}")     
+                    return root_node
+                # Wrap the root so traversal can be tracked from the very 
+                print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
                 return SpyNode(root_node, tracer, config)
             return None
             
@@ -261,113 +275,6 @@ class spy_BinaryTree:
         
         
 
-
-
-# ==========================================         
-# --- 1. The User's Logic (Standard Class) ---
-class Node:
-    def __init__(self, key):
-        self.key = key
-        self.left = None
-        self.right = None
-
-class BinaryTree:
-    def __init__(self):
-        self.root = None
-
-    def insert(self, key):
-        if self.root is None:
-            self.root = Node(key)
-            return
-        
-        # This is a standard iterative insert (Could be recursive too, doesn't matter!)
-        current = self.root
-        while True:
-            if key < current.key:
-                if current.left is None:
-                    current.left = Node(key)
-                    break
-                else:
-                    current = current.left
-            else:
-                if current.right is None:
-                    current.right = Node(key)
-                    break
-                else:
-                    current = current.right
-    
-    def search(self, key):
-        """Search for a key in the binary tree. Returns True if found, False otherwise."""
-        current = self.root
-        while current is not None:
-            if key == current.key:
-                return True
-            elif key < current.key:
-                current = current.left
-            else:
-                current = current.right
-        return False
-    
-    
-# ==========================================
-# TEST: A "Weird" User Implementation
-# ==========================================
-
-# Imagine a user submits this code. 
-# They use 'val', 'l', 'r', and 'head' instead of standard names.
-
-class WeirdNode:
-    def __init__(self, val):
-        self.val = val   # Not 'key'
-        self.l = None    # Not 'left'
-        self.r = None    # Not 'right'
-
-class WeirdTree:
-    def __init__(self):
-        self.head = None # Not 'root'
-
-    def add_stuff(self, val):
-        if self.head is None:
-            self.head = WeirdNode(val)
-            return
-        
-        curr = self.head
-        while True:
-            if val < curr.val:
-                if curr.l is None:
-                    curr.l = WeirdNode(val)
-                    break
-                else:
-                    curr = curr.l
-            else:
-                if curr.r is None:
-                    curr.r = WeirdNode(val)
-                    break
-                else:
-                    curr = curr.r
-    
-    def find_stuff(self, val):
-        """Recursive search for a value in the weird tree."""
-        return self._find_recursive(self.head, val)
-    
-    def _find_recursive(self, node, val):
-        """Helper method for recursive search."""
-        # Base case: node is None
-        if node is None:
-            return False
-        
-        # Base case: found the value
-        if val == node.val:
-            return True
-        
-        # Recursive case: search left or right
-        if val < node.val:
-            return self._find_recursive(node.l, val)
-        else:
-            return self._find_recursive(node.r, val)
-        
-# --- EXECUTION ---
-
 # 1. Define the Config for this specific user
 user_config = {
     "left": "left",
@@ -389,7 +296,13 @@ spy_tree.insert(6, "a")
 spy_tree.insert(7, "b")
 spy_tree.insert(8, "c")
 spy_tree.insert(9, "d")
-
+spy_tree.insert(10, "d")
+spy_tree.insert(11, "d")
+spy_tree.insert(12, "d")
+spy_tree.insert(13, "d")
+spy_tree.insert(14, "d")
+spy_tree.insert(15, "d")
+spy_tree.insert(16, "d")
 
 
 
