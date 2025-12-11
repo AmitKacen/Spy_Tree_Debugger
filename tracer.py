@@ -8,6 +8,13 @@ DEFAULT_CONFIG = {
     "root": "root"
 }
 
+# --- 1. GLOBAL HELPERS ---
+def safe_unwrap(value):
+    """Recursively strips off Spy wrappers."""
+    while hasattr(value, "_real_node"):
+        value = value._real_node
+    return value
+
 
 class Tracer:
     def __init__(self, config=DEFAULT_CONFIG):
@@ -43,8 +50,6 @@ class Tracer:
         })
     
     def add_registered_node(self, real_node):
-        if hasattr(real_node, "_real_node"):
-            print(f"⚠️ WARNING: SpyNode detected inside SpyNode! ID: {id(real_node)}")
         if id(real_node) not in self.registered_nodes and real_node is not None:
             self.registered_nodes[id(real_node)] = real_node
         
@@ -99,8 +104,7 @@ def serialize_tree(node, config, visited_ids):
     node_parent = getattr(node, config["parent"], None)
     parent_id=None
     if node_parent is not None:
-        while hasattr(node_parent, "_real_node"):
-            node_parent = node_parent._real_node
+        node_parent = safe_unwrap(node_parent)
         parent_id = id(node_parent)
     
     return {
@@ -118,9 +122,7 @@ class ProxyNode:
         # We use object.__setattr__ to avoid triggering our own trap!
         
         # save check to avoid nested SpyNodes IMORTANRT!!!!
-        while hasattr(real_node, "_real_node"):
-            real_node = real_node._real_node
-            print(f"⚠️ WARNING: Unwrapping nested SpyNode during init! ID: {id(real_node)}, {getattr(real_node, config['key'], '???')}")    
+        real_node = safe_unwrap(real_node)
         super().__setattr__("_real_node", real_node)
         super().__setattr__("_tracer", tracer)
         super().__setattr__("_config", config)
@@ -136,10 +138,7 @@ class ProxyNode:
             return self_real is None
         
         # Get real node from other (if it's a ProxyNode)
-        if isinstance(other, ProxyNode):
-            other_real = super(ProxyNode, other).__getattribute__("_real_node")
-        else:
-            other_real = other
+        other_real = safe_unwrap(other)
         
         return self_real is other_real
 
@@ -150,11 +149,11 @@ class ProxyNode:
         return not result
 
     def __hash__(self):
-        real_node = super().__getattribute__("_real_node")
+        real_node = safe_unwrap(super().__getattribute__("_real_node"))
         return hash(id(real_node))
     
     def __bool__(self):
-        real_node = super().__getattribute__("_real_node")
+        real_node = safe_unwrap(super().__getattribute__("_real_node"))
         return real_node is not None
         
     # HELPER: Generate the same ID format as the serializer
@@ -169,9 +168,7 @@ class ProxyNode:
         
         # Get internal helpers
         real_node = super().__getattribute__("_real_node")
-        while hasattr(real_node, "_real_node"):
-            real_node = real_node._real_node
-            print(f"⚠️ WARNING: Unwrapping nested SpyNode during getattribute! ID: {id(real_node)}, {getattr(real_node, self._config['key'], '???')}")
+        real_node = safe_unwrap(real_node)
         tracer = super().__getattribute__("_tracer")
         config = super().__getattribute__("_config")
 
@@ -186,9 +183,9 @@ class ProxyNode:
             
             # Log the traversal action
             if name in [config["left"], config["right"]]:
-                tracer.log(active_id, f"lokking at {name} child {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
+                tracer.log(active_id, f"looking at {name} child {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
             else:
-                tracer.log(active_id, f"lokking at parent {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
+                tracer.log(active_id, f"looking at parent {getattr(child_node, config['key'], 'None') if child_node else 'None'}")
             
             
             # CRITICAL: If the child exists, wrap IT in a Spy too!
@@ -270,7 +267,6 @@ class ProxyTree:
             root_node = getattr(real_tree, config["root"])
             if root_node is not None:
                 if isinstance(root_node, ProxyNode):
-                    print(f"⚠️ WARNING: SpyNode detected inside SpyNode during root get! ID: {id(root_node)}, {getattr(root_node, config['key'], '???')}")     
                     return root_node
                 # Wrap the root so traversal can be tracked from the very 
                 print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
@@ -298,9 +294,7 @@ class ProxyTree:
         # 4. Trap Writes (e.g., self.root = Node(key))
         # If 'insert' sets self.root, we must apply that to the REAL tree.
         real_tree = super().__getattribute__("_real_tree")
-        actual_value = value
-        if isinstance(value, ProxyNode):
-            actual_value = value._real_node
+        actual_value = safe_unwrap(value)
         setattr(real_tree, name, actual_value)
         
         
