@@ -101,7 +101,6 @@ def serialize_tree(node, config, visited_ids):
     if node_parent is not None:
         while hasattr(node_parent, "_real_node"):
             node_parent = node_parent._real_node
-            print(f"⚠️ WARNING: SpyNode detected inside SpyNode during serialization! ID: {id(node_parent)}, {getattr(node_parent, config['key'], '???')}")
         parent_id = id(node_parent)
     
     return {
@@ -114,7 +113,7 @@ def serialize_tree(node, config, visited_ids):
         "parent": parent_id
     }
         
-class SpyNode:
+class ProxyNode:
     def __init__(self, real_node, tracer, config=DEFAULT_CONFIG):
         # We use object.__setattr__ to avoid triggering our own trap!
         
@@ -126,6 +125,37 @@ class SpyNode:
         super().__setattr__("_tracer", tracer)
         super().__setattr__("_config", config)
         tracer.add_registered_node(real_node)
+    
+    # COMPARISON: Compare the real nodes, not the wrappers!
+    def __eq__(self, other):
+        # Get real node from self
+        self_real = super().__getattribute__("_real_node")
+        
+        # Handle None comparison
+        if other is None:
+            return self_real is None
+        
+        # Get real node from other (if it's a ProxyNode)
+        if isinstance(other, ProxyNode):
+            other_real = super(ProxyNode, other).__getattribute__("_real_node")
+        else:
+            other_real = other
+        
+        return self_real is other_real
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __hash__(self):
+        real_node = super().__getattribute__("_real_node")
+        return hash(id(real_node))
+    
+    def __bool__(self):
+        real_node = super().__getattribute__("_real_node")
+        return real_node is not None
         
     # HELPER: Generate the same ID format as the serializer
     def _get_id(self, node):
@@ -166,7 +196,7 @@ class SpyNode:
             if child_node is not None:
                 if hasattr(child_node, "_real_node"):
                     return child_node
-                return SpyNode(child_node, tracer, config)
+                return ProxyNode(child_node, tracer, config)
             else:
                 return None
             
@@ -191,7 +221,7 @@ class SpyNode:
         config = super().__getattribute__("_config")        
         
         actual_value = value
-        if isinstance(value, SpyNode):
+        if isinstance(value, ProxyNode):
             actual_value = value._real_node
             print(f" (unwrapped from SpyNode ID: {id(value)})")
 
@@ -218,7 +248,7 @@ class SpyNode:
             object.__setattr__(real_node, name, actual_value)
             
             
-class spy_BinaryTree:
+class ProxyTree:
     def __init__(self, real_tree, tracer, config = DEFAULT_CONFIG):
         # Initialize internal attributes safely
         super().__setattr__("_real_tree", real_tree)
@@ -239,12 +269,12 @@ class spy_BinaryTree:
         if name == config["root"]:
             root_node = getattr(real_tree, config["root"])
             if root_node is not None:
-                if isinstance(root_node, SpyNode):
+                if isinstance(root_node, ProxyNode):
                     print(f"⚠️ WARNING: SpyNode detected inside SpyNode during root get! ID: {id(root_node)}, {getattr(root_node, config['key'], '???')}")     
                     return root_node
                 # Wrap the root so traversal can be tracked from the very 
                 print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
-                return SpyNode(root_node, tracer, config)
+                return ProxyNode(root_node, tracer, config)
             return None
             
         # 3. Handle Methods (The "Hijack")
@@ -269,7 +299,7 @@ class spy_BinaryTree:
         # If 'insert' sets self.root, we must apply that to the REAL tree.
         real_tree = super().__getattribute__("_real_tree")
         actual_value = value
-        if isinstance(value, SpyNode):
+        if isinstance(value, ProxyNode):
             actual_value = value._real_node
         setattr(real_tree, name, actual_value)
         
@@ -289,26 +319,25 @@ from test_avl import AVLTree, AVLNode
 tracer = Tracer(config=user_config)
 # 3. Wrap User's Tree with Spy
 avl_tree = AVLTree()
-spy_tree = spy_BinaryTree(avl_tree, tracer, config=user_config)
+spy_tree = ProxyTree(avl_tree, tracer, config=user_config)
 tracer.set_tree(avl_tree)
 # 3. User Operations
 spy_tree.insert(6, "a")
 spy_tree.insert(7, "b")
 spy_tree.insert(8, "c")
-spy_tree.insert(9, "d")
+spy_tree.insert(5, "d")
 spy_tree.insert(10, "d")
-spy_tree.insert(11, "d")
-spy_tree.insert(12, "d")
-spy_tree.insert(13, "d")
-spy_tree.insert(14, "d")
-spy_tree.insert(15, "d")
-spy_tree.insert(16, "d")
+test_node = spy_tree.search(5)[0]
+if isinstance(test_node, ProxyNode):
+    print("*****************************************************************************************")
+spy_tree.delete(test_node)
+
 
 
 
 # 4. Verify Output
 print("\n--- JSON Output (Proof it worked) ---")
-print(json.dumps(tracer.history[50], indent=2))
+print(json.dumps(tracer.history[-1], indent=2))
 
 # 5. Export for Visualizer
 with open("tree_data.js", "w") as f:
@@ -362,3 +391,37 @@ if len(tracer_weird.history) > 10:
 with open("tree_data.js", "w") as f:
     f.write(f"const TREE_HISTORY = {json.dumps(tracer_weird.history)};")
     print("\n✅ Exported to tree_data.js")"""
+    
+    
+"""from test import BinaryTree
+config = {
+    "left": "left",    
+    "right": "right",
+    "parent": "parent",
+    "key": "key",
+    "root": "root"
+}
+tracer = Tracer(config=config)
+bt = BinaryTree()
+spy_bt = ProxyTree(bt, tracer, config=config)
+tracer.set_tree(bt)
+spy_bt.insert(15)
+spy_bt.insert(10)
+spy_bt.insert(20)
+spy_bt.insert(8)
+spy_bt.delete(10)
+
+# 5. Verify Output
+print("\n--- Total Steps Logged ---")
+print(f"Total history entries: {len(tracer.history)}")
+
+print("\n--- Sample Log Entry ---")
+if len(tracer.history) > 10:
+    print(json.dumps(tracer.history[10], indent=2))
+
+# 6. Export for Visualizer
+with open("tree_data.js", "w") as f:
+    f.write(f"const TREE_HISTORY = {json.dumps(tracer.history)};")
+    print("\n✅ Exported to tree_data.js")
+"""
+
