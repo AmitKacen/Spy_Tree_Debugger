@@ -11,6 +11,36 @@
         button:disabled { background: #ccc; }
         #status { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px; height: 30px; }
         #step-counter { color: #666; }
+        
+        /* Node Info Panel */
+        #node-info {
+            position: fixed;
+            right: 20px;
+            top: 100px;
+            width: 280px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 15px;
+            display: none;
+        }
+        #node-info.visible { display: block; }
+        #node-info h3 { margin: 0 0 10px 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px; }
+        #node-info .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 18px;
+            color: #999;
+        }
+        #node-info .close-btn:hover { color: #333; }
+        #node-info table { width: 100%; border-collapse: collapse; }
+        #node-info td { padding: 5px 8px; border-bottom: 1px solid #eee; }
+        #node-info td:first-child { font-weight: bold; color: #555; width: 40%; }
+        #node-info td:last-child { color: #333; word-break: break-all; }
+        #node-info .no-attrs { color: #999; font-style: italic; }
     </style>
 </head>
 <body>
@@ -23,6 +53,13 @@
         <button onclick="prevStep()" id="btn-prev">⬅ Previous</button>
         <span id="step-counter">Step 0 / 0</span>
         <button onclick="nextStep()" id="btn-next">Next ➡</button>
+    </div>
+
+    <!-- Node Info Panel -->
+    <div id="node-info">
+        <span class="close-btn" onclick="closeNodeInfo()">✕</span>
+        <h3>📋 Node Info</h3>
+        <div id="node-info-content"></div>
     </div>
 
     <script src="tree_data.js"></script>
@@ -56,14 +93,70 @@
                 }
             };
             network = new vis.Network(container, data, options);
+            
+            // Add click event listener for nodes
+            network.on("click", function(params) {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    showNodeInfo(nodeId);
+                } else {
+                    closeNodeInfo();
+                }
+            });
+            
             updateView();
+        }
+        
+        // Show node info panel
+        function showNodeInfo(nodeId) {
+            const nodeData = nodeDataMap[nodeId];
+            const panel = document.getElementById('node-info');
+            const content = document.getElementById('node-info-content');
+            
+            if (!nodeData) {
+                content.innerHTML = '<p class="no-attrs">No data available</p>';
+                panel.classList.add('visible');
+                return;
+            }
+            
+            let html = '<table>';
+            
+            // Basic info
+            html += `<tr><td>ID</td><td>${nodeData.id}</td></tr>`;
+            html += `<tr><td>Key</td><td>${nodeData.name}</td></tr>`;
+            html += `<tr><td>Parent ID</td><td>${nodeData.parent || 'None'}</td></tr>`;
+            
+            // Attributes
+            if (nodeData.attributes && Object.keys(nodeData.attributes).length > 0) {
+                html += '<tr><td colspan="2" style="background:#f5f5f5; font-weight:bold; text-align:center;">Attributes</td></tr>';
+                for (const [key, value] of Object.entries(nodeData.attributes)) {
+                    html += `<tr><td>${key}</td><td>${value}</td></tr>`;
+                }
+            } else {
+                html += '<tr><td colspan="2" class="no-attrs">No additional attributes</td></tr>';
+            }
+            
+            html += '</table>';
+            content.innerHTML = html;
+            panel.classList.add('visible');
+        }
+        
+        // Close node info panel
+        function closeNodeInfo() {
+            document.getElementById('node-info').classList.remove('visible');
         }
 
         // 2. Helper: Convert your nested JSON tree to Flat Nodes/Edges
+        // Store node data for click lookup
+        let nodeDataMap = {};
+        
         function parseTreeToGraph(node, nodes = [], edges = [], parentId = null) {
             if (!node) return;
 
             const myId = String(node.id); 
+            
+            // Store full node data for click lookup
+            nodeDataMap[myId] = node;
             
             // 1. Add Node (if new)
             const exists = nodes.some(n => n.id === myId);
@@ -130,6 +223,9 @@
             // Prepare Graph Data
             const nodes = [];
             const edges = [];
+            
+            // Clear node data map for this step
+            nodeDataMap = {};
             
             const snapshot = stepData.snapshot;
 

@@ -98,14 +98,36 @@ def serialize_tree(node, config, visited_ids):
         key = getattr(node, config["key"])
     except AttributeError:
         key = "???"
-
+    ## TODO: unwarp proxies from children?
     node_left = getattr(node, config["left"], None)
     node_right = getattr(node, config["right"], None)
+    
     node_parent = getattr(node, config["parent"], None)
     parent_id=None
     if node_parent is not None:
         node_parent = safe_unwrap(node_parent)
         parent_id = id(node_parent)
+    
+    # Collect all attributes of the node (excluding left, right, parent, key which we handle separately)
+    skip_attrs = {config["left"], config["right"], config["parent"], config["key"], "__dict__", "__class__", "__module__", "__weakref__", "__doc__"}
+    attributes = {}
+    for attr_name in dir(node):
+        # Skip private/magic attributes and the ones we already handle
+        if attr_name.startswith("_") or attr_name in skip_attrs:
+            continue
+        try:
+            attr_value = getattr(node, attr_name)
+            # Skip methods/callables
+            if callable(attr_value):
+                continue
+            # Handle basic types
+            if isinstance(attr_value, (int, float, str, bool, type(None))):
+                attributes[attr_name] = attr_value
+            else:
+                # For complex objects, just store their string representation
+                attributes[attr_name] = str(attr_value)
+        except Exception:
+            pass  # Skip attributes that can't be accessed
     
     return {
         "id": node_id, # This is an INT, the JS fix above handles it.
@@ -114,7 +136,8 @@ def serialize_tree(node, config, visited_ids):
             serialize_tree(node_left, config, visited_ids),
             serialize_tree(node_right, config, visited_ids)
         ],
-        "parent": parent_id
+        "parent": parent_id,
+        "attributes": attributes
     }
         
 class ProxyNode:
