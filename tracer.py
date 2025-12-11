@@ -155,6 +155,22 @@ class ProxyNode:
     def __bool__(self):
         real_node = safe_unwrap(super().__getattribute__("_real_node"))
         return real_node is not None
+    
+    # < (Less Than)
+    def __lt__(self, other):
+        return self._real_node < safe_unwrap(other)
+
+    # <= (Less Than or Equal)
+    def __le__(self, other):
+        return self._real_node <= safe_unwrap(other)
+
+    # > (Greater Than)
+    def __gt__(self, other):
+        return self._real_node > safe_unwrap(other)
+
+    # >= (Greater Than or Equal)
+    def __ge__(self, other):
+        return self._real_node >= safe_unwrap(other)
         
     # HELPER: Generate the same ID format as the serializer
     def _get_id(self, node):
@@ -325,6 +341,7 @@ test_node = spy_tree.search(5)[0]
 if isinstance(test_node, ProxyNode):
     print("*****************************************************************************************")
 spy_tree.delete(test_node)
+spy_tree.insert(11, "d")
 
 
 
