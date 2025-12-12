@@ -367,8 +367,6 @@ spy_tree.insert(8, "c")
 spy_tree.insert(5, "d")
 spy_tree.insert(10, "d")
 test_node = spy_tree.search(7)[0]
-if isinstance(test_node, ProxyNode):
-    print("*****************************************************************************************")
 spy_tree.delete(test_node)
 spy_tree.insert(11, "d")
 
@@ -383,85 +381,5 @@ print(json.dumps(tracer.history[-1], indent=2))
 with open("tree_data.js", "w") as f:
     f.write(f"const TREE_HISTORY = {json.dumps(tracer.history)};")
 
-"""# --- EXECUTION: WeirdTree Test ---
 
-# 1. Define the Config for the WeirdTree (custom attribute names)
-weird_config = {
-    "left": "l",      # WeirdNode uses 'l' not 'left'
-    "right": "r",     # WeirdNode uses 'r' not 'right'
-    "parent": "parent",  # WeirdNode doesn't have parent, but we can add it
-    "key": "val",     # WeirdNode uses 'val' not 'key'
-    "root": "head"    # WeirdTree uses 'head' not 'root'
-}
-
-# 2. Initialize Tracer with weird config
-tracer_weird = Tracer(config=weird_config)
-
-# 3. Create and wrap the WeirdTree
-weird_tree = WeirdTree()
-spy_weird_tree = spy_BinaryTree(weird_tree, tracer_weird, config=weird_config)
-tracer_weird.set_tree(weird_tree)
-
-# 4. User Operations (using the spy)
-print("--- Inserting into WeirdTree ---")
-spy_weird_tree.add_stuff(50)
-spy_weird_tree.add_stuff(30)
-spy_weird_tree.add_stuff(70)
-spy_weird_tree.add_stuff(20)
-spy_weird_tree.add_stuff(40)
-spy_weird_tree.add_stuff(60)
-spy_weird_tree.add_stuff(80)
-
-print("\n--- Searching in WeirdTree ---")
-result1 = spy_weird_tree.find_stuff(40)
-print(f"Search for 40: {result1}")
-
-result2 = spy_weird_tree.find_stuff(99)
-print(f"Search for 99: {result2}")
-
-# 5. Verify Output
-print("\n--- Total Steps Logged ---")
-print(f"Total history entries: {len(tracer_weird.history)}")
-
-print("\n--- Sample Log Entry ---")
-if len(tracer_weird.history) > 10:
-    print(json.dumps(tracer_weird.history[10], indent=2))
-
-# 6. Export for Visualizer
-with open("tree_data.js", "w") as f:
-    f.write(f"const TREE_HISTORY = {json.dumps(tracer_weird.history)};")
-    print("\n✅ Exported to tree_data.js")"""
-    
-    
-"""from test import BinaryTree
-config = {
-    "left": "left",    
-    "right": "right",
-    "parent": "parent",
-    "key": "key",
-    "root": "root"
-}
-tracer = Tracer(config=config)
-bt = BinaryTree()
-spy_bt = ProxyTree(bt, tracer, config=config)
-tracer.set_tree(bt)
-spy_bt.insert(15)
-spy_bt.insert(10)
-spy_bt.insert(20)
-spy_bt.insert(8)
-spy_bt.delete(10)
-
-# 5. Verify Output
-print("\n--- Total Steps Logged ---")
-print(f"Total history entries: {len(tracer.history)}")
-
-print("\n--- Sample Log Entry ---")
-if len(tracer.history) > 10:
-    print(json.dumps(tracer.history[10], indent=2))
-
-# 6. Export for Visualizer
-with open("tree_data.js", "w") as f:
-    f.write(f"const TREE_HISTORY = {json.dumps(tracer.history)};")
-    print("\n✅ Exported to tree_data.js")
-"""
 
