@@ -23,6 +23,7 @@ class Tracer:
         self.config = config # Configuration for attribute names
         self.locking = False # To prevent recursive logging (if True meaning we take a snapshot else )
         self.registered_nodes = {} # To track nodes we've seen (important for detecting)
+        self.method = None # Current method being traced
         
     def set_tree(self, tree):
         self.observed_tree = tree
@@ -46,12 +47,18 @@ class Tracer:
         self.history.append({
             "node": active_node_key,
             "action": action,
-            "snapshot": snapshot
+            "snapshot": snapshot,
+            "method": self.method
         })
     
     def add_registered_node(self, real_node):
         if id(real_node) not in self.registered_nodes and real_node is not None:
             self.registered_nodes[id(real_node)] = real_node
+    
+    def update_cuurrent_method(self, method_name):
+        self.method = method_name
+        self.registered_nodes = {} # Reset registered nodes for new method
+        self.log("N/A", f"Entering method {method_name}")
         
         
 # --- 1. SERIALIZER (Robust "Visited Set" Approach) ---
@@ -74,6 +81,7 @@ def serialize_forest(root_node, config, registered_nodes_dict):
     for node_id, node in list(registered_nodes_dict.items()):
         # If we haven't visited this node yet, it's a floating tree
         if id(node) not in visited_ids:
+            print(f"🔔 Serializing floating tree rooted at node ID {id(node)} (key={getattr(node, config['key'], '???')})")
             floating_tree = serialize_tree(node, config, visited_ids)
             if floating_tree:
                 subtrees.append(floating_tree)
@@ -142,10 +150,10 @@ def serialize_tree(node, config, visited_ids):
         
 class ProxyNode:
     def __init__(self, real_node, tracer, config=DEFAULT_CONFIG):
-        # We use object.__setattr__ to avoid triggering our own trap!
-        
         # save check to avoid nested SpyNodes IMORTANRT!!!!
         real_node = safe_unwrap(real_node)
+        
+        # We use object.__setattr__ to avoid triggering our own trap!
         super().__setattr__("_real_node", real_node)
         super().__setattr__("_tracer", tracer)
         super().__setattr__("_config", config)
@@ -319,7 +327,8 @@ class ProxyTree:
         if callable(attr) and hasattr(attr, "__self__"):
             # Get the unbound function from the class (e.g., BinaryTree.insert)
             func = getattr(type(real_tree), name)
-            
+            print(f"🔔 Hijacking method: {name} 🔔")
+            self._tracer.update_cuurrent_method(name)
             # Return a wrapper that calls the function with 'self' = THIS SPY
             # forcing the method to use our traps (like self.root or self.left)
             def method_proxy(*args, **kwargs):
