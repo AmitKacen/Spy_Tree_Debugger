@@ -57,7 +57,6 @@ class Tracer:
     
     def update_cuurrent_method(self, method_name):
         self.method = method_name
-        self.registered_nodes = {} # Reset registered nodes for new method
         self.log("N/A", f"Entering method {method_name}")
         
         
@@ -81,7 +80,6 @@ def serialize_forest(root_node, config, registered_nodes_dict):
     for node_id, node in list(registered_nodes_dict.items()):
         # If we haven't visited this node yet, it's a floating tree
         if id(node) not in visited_ids:
-            print(f"🔔 Serializing floating tree rooted at node ID {id(node)} (key={getattr(node, config['key'], '???')})")
             floating_tree = serialize_tree(node, config, visited_ids)
             if floating_tree:
                 subtrees.append(floating_tree)
@@ -264,10 +262,12 @@ class ProxyNode:
         tracer = super().__getattribute__("_tracer")
         config = super().__getattribute__("_config")        
         
+        # Use the NEW ID format for logging
+        active_id = self._get_id(real_node)
+            
         actual_value = value
         if isinstance(value, ProxyNode):
             actual_value = value._real_node
-            print(f" (unwrapped from SpyNode ID: {id(value)})")
 
         
         if name in [config["left"], config["right"], config["parent"]]:
@@ -275,8 +275,7 @@ class ProxyNode:
             # Perform the actual write on the real nod
             setattr(real_node, name, actual_value)
             
-            # Use the NEW ID format for logging
-            active_id = self._get_id(real_node)
+            
             
             val_str = "None"
             if actual_value is not None:
@@ -289,6 +288,7 @@ class ProxyNode:
             tracer.log(active_id, f"Inserted node {val_str} at {name}")
         else:
             # Allow setting other attributes normally
+            tracer.log(active_id, f"Updating attribute {name} to {actual_value}")
             object.__setattr__(real_node, name, actual_value)
             
             
@@ -315,8 +315,6 @@ class ProxyTree:
             if root_node is not None:
                 if isinstance(root_node, ProxyNode):
                     return root_node
-                # Wrap the root so traversal can be tracked from the very 
-                print("⚠️⚠️⚠️⚠️⚠️⚠️⚠️")
                 return ProxyNode(root_node, tracer, config)
             return None
             
@@ -327,7 +325,6 @@ class ProxyTree:
         if callable(attr) and hasattr(attr, "__self__"):
             # Get the unbound function from the class (e.g., BinaryTree.insert)
             func = getattr(type(real_tree), name)
-            print(f"🔔 Hijacking method: {name} 🔔")
             self._tracer.update_cuurrent_method(name)
             # Return a wrapper that calls the function with 'self' = THIS SPY
             # forcing the method to use our traps (like self.root or self.left)
@@ -369,7 +366,7 @@ spy_tree.insert(7, "b")
 spy_tree.insert(8, "c")
 spy_tree.insert(5, "d")
 spy_tree.insert(10, "d")
-test_node = spy_tree.search(5)[0]
+test_node = spy_tree.search(7)[0]
 if isinstance(test_node, ProxyNode):
     print("*****************************************************************************************")
 spy_tree.delete(test_node)
