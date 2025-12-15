@@ -78,7 +78,7 @@ tree.insert(70)
 ## After (With Spy Visualization)
 
 ```python
-from spy_debugger import Tracer, ProxyTree
+from tracer import Tracer, ProxyTree
 
 # 1. Define your structure config (tell the spy your attribute names)
 config = {"left": "left", "right": "right", "parent": "parent", "key": "key", "root": "root"}
