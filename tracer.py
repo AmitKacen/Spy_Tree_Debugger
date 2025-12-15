@@ -23,6 +23,7 @@ class Tracer:
         self.config = config # Configuration for attribute names
         self.locking = False # To prevent recursive logging (if True meaning we take a snapshot else )
         self.registered_nodes = {} # To track nodes we've seen (important for detecting)
+        self.__cache__ = {} 
         self.method = None # Current method being traced
         
     def set_tree(self, tree):
@@ -58,6 +59,19 @@ class Tracer:
     def update_cuurrent_method(self, method_name):
         self.method = method_name
         self.log("N/A", f"Entering method {method_name}")
+        
+    def get_proxy(self, real_node):
+        if real_node is None:
+            return None
+        real_node = safe_unwrap(real_node)
+        # Check cache first
+        node_id = id(real_node)
+        if node_id in self.__cache__:
+            return self.__cache__[node_id]
+        # Create new proxy and cache it
+        proxy = ProxyNode(real_node, self, config=self.config)
+        self.__cache__[node_id] = proxy
+        return proxy
         
         
 # --- 1. SERIALIZER (Robust "Visited Set" Approach) ---
@@ -235,12 +249,7 @@ class ProxyNode:
             
             # CRITICAL: If the child exists, wrap IT in a Spy too!
             # This ensures the spy follows the user down the tree.
-            if child_node is not None:
-                if hasattr(child_node, "_real_node"):
-                    return child_node
-                return ProxyNode(child_node, tracer, config)
-            else:
-                return None
+            return tracer.get_proxy(child_node)
             
         if name == config["key"]:
             # Get the key of the current node for logging
@@ -312,12 +321,7 @@ class ProxyTree:
         # This is critical: When 'insert' calls 'self.root', it lands here.
         if name in [config["root"], config["max"], config["min"]]:
             root_node = getattr(real_tree, name)
-            if root_node is not None:
-                if isinstance(root_node, ProxyNode):
-                    return root_node
-                return ProxyNode(root_node, tracer, config)
-            return None
-            
+            return tracer.get_proxy(root_node)            
         # 3. Handle Methods (The "Hijack")
         attr = getattr(real_tree, name)
         
@@ -325,7 +329,7 @@ class ProxyTree:
         if callable(attr) and hasattr(attr, "__self__"):
             # Get the unbound function from the class (e.g., BinaryTree.insert)
             func = getattr(type(real_tree), name)
-            self._tracer.update_cuurrent_method(name)
+            tracer.update_cuurrent_method(name)
             # Return a wrapper that calls the function with 'self' = THIS SPY
             # forcing the method to use our traps (like self.root or self.left)
             def method_proxy(*args, **kwargs):
