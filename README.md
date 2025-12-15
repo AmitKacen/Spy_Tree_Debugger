@@ -24,7 +24,6 @@ Instead, it uses the **Transparent Proxy Pattern**. We wrap your initial root no
 
 ### Visualizing the Process
 
-![Spy Tree Debugger Infection Mechanism](spy_mechanism_diagram.png)
 
 ### The Core Philosophy: "The Shadow Spy"
 
@@ -105,3 +104,9 @@ spy_tree.insert(70)
 # 5. Export the data for the viewer
 with open("tree_data.js", "w") as f:
     f.write(f"const TREE_HISTORY = {json.dumps(tracer.history)};")
+
+```
+## UI
+<img width="3838" height="1913" alt="image" src="https://github.com/user-attachments/assets/87127697-5aa3-4db0-a143-da0c9042a77c" />
+
+
