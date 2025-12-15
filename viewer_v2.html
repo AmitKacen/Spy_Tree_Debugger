@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tree Debugger v2.0</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1e1e1e;
+            --bg-secondary: #252526;
+            --bg-tertiary: #2d2d30;
+            --border-color: #3e3e42;
+            --text-primary: #d4d4d4;
+            --text-secondary: #808080;
+            --accent-blue: #007acc;
+            --accent-green: #4ec9b0;
+            --accent-orange: #ce9178;
+            --accent-red: #f14c4c;
+            --accent-yellow: #dcdcaa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* === LAYOUT === */
+        .app-container {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            grid-template-rows: 50px 1fr 200px;
+            height: 100vh;
+            gap: 1px;
+            background: var(--border-color);
+        }
+
+        /* === HEADER === */
+        .header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .logo span {
+            color: var(--text-primary);
+        }
+
+        /* === PANELS === */
+        .panel {
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 10px 15px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+            padding: 10px;
+        }
+
+        /* === LEFT SIDEBAR - HISTORY === */
+        .history-panel {
+            grid-row: 2 / 4;
+        }
+
+        .history-list {
+            list-style: none;
+        }
+
+        .history-item {
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 2px;
+            border-left: 3px solid transparent;
+            transition: all 0.15s ease;
+        }
+
+        .history-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .history-item.active {
+            background: rgba(0, 122, 204, 0.2);
+            border-left-color: var(--accent-blue);
+        }
+
+        .history-item.method-start {
+            border-left-color: var(--accent-green);
+            background: rgba(78, 201, 176, 0.1);
+        }
+
+        .history-step {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        .history-action {
+            font-size: 12px;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-method {
+            font-size: 10px;
+            color: var(--accent-yellow);
+            margin-top: 2px;
+        }
+
+        /* === MAIN CANVAS === */
+        .canvas-panel {
+            position: relative;
+            grid-row: 2 / 3;
+            overflow: hidden;
+        }
+
+        #tree-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg-primary);
+        }
+
+        /* === RIGHT SIDEBAR === */
+        .info-panel {
+            grid-row: 2 / 3;
+        }
+
+        /* Node Info Card */
+        .node-card {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .node-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--accent-blue);
+        }
+
+        .node-attr {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .node-attr:last-child {
+            border-bottom: none;
+        }
+
+        .node-attr-key {
+            color: var(--accent-green);
+        }
+
+        .node-attr-value {
+            color: var(--accent-orange);
+        }
+
+        /* === DETAILS PANEL (Bottom Right) === */
+        .details-panel {
+            grid-row: 3 / 4;
+        }
+
+        .change-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-right: 5px;
+        }
+
+        .change-added { background: rgba(78, 201, 176, 0.3); color: var(--accent-green); }
+        .change-removed { background: rgba(241, 76, 76, 0.3); color: var(--accent-red); }
+        .change-modified { background: rgba(0, 122, 204, 0.3); color: var(--accent-blue); }
+
+        /* === TIMELINE (Bottom) === */
+        .timeline-panel {
+            grid-column: 1 / 3;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            background: var(--bg-tertiary);
+        }
+
+        .playback-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease;
+        }
+
+        .playback-btn:hover {
+            background: var(--accent-blue);
+        }
+
+        .playback-btn.active {
+            background: var(--accent-blue);
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 20px;
+        }
+
+        .speed-control label {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .speed-slider {
+            width: 80px;
+        }
+
+        .step-counter {
+            margin-left: auto;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .step-counter span {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Timeline Scrubber */
+        .timeline-scrubber {
+            flex: 1;
+            padding: 10px 15px;
+            overflow-x: auto;
+        }
+
+        .timeline-track {
+            height: 60px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            position: relative;
+            min-width: 100%;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+        }
+
+        .timeline-marker {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+            margin: 0 2px;
+        }
+
+        .timeline-marker:hover {
+            transform: scale(1.5);
+            background: var(--accent-blue);
+        }
+
+        .timeline-marker.active {
+            background: var(--accent-blue);
+            transform: scale(1.5);
+        }
+
+        .timeline-marker.method-start {
+            background: var(--accent-green);
+            width: 12px;
+            height: 12px;
+        }
+
+        /* === FILTER BAR === */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            padding: 10px 15px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .filter-input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .method-filter {
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        /* === TREE STATS === */
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            padding: 8px 15px;
+            background: var(--bg-tertiary);
+            font-size: 11px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        /* === FLOATING NODE INDICATOR === */
+        .floating-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(241, 76, 76, 0.2);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        /* === KEYBOARD SHORTCUTS TOOLTIP === */
+        .shortcuts-hint {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-left: 10px;
+        }
+
+        kbd {
+            background: var(--bg-tertiary);
+            padding: 2px 5px;
+            border-radius: 3px;
+            border: 1px solid var(--border-color);
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="header">
+            <div class="logo">🌳 Tree<span>Debugger</span></div>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-label">Nodes:</span>
+                    <span class="stat-value" id="stat-nodes">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Height:</span>
+                    <span class="stat-value" id="stat-height">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Floating:</span>
+                    <span class="stat-value" id="stat-floating">0</span>
+                </div>
+            </div>
+            <div class="shortcuts-hint">
+                <kbd>←</kbd> <kbd>→</kbd> Navigate &nbsp;
+                <kbd>Space</kbd> Play/Pause &nbsp;
+                <kbd>Home</kbd> <kbd>End</kbd> Jump
+            </div>
+        </header>
+
+        <!-- LEFT SIDEBAR - HISTORY -->
+        <aside class="panel history-panel">
+            <div class="filter-bar">
+                <input type="text" class="filter-input" id="search-input" placeholder="Search actions...">
+                <select class="method-filter" id="method-filter">
+                    <option value="">All Methods</option>
+                </select>
+            </div>
+            <div class="panel-header">Execution History</div>
+            <div class="panel-content">
+                <ul class="history-list" id="history-list"></ul>
+            </div>
+        </aside>
+
+        <!-- MAIN CANVAS -->
+        <main class="panel canvas-panel">
+            <div id="tree-canvas"></div>
+            <div class="floating-badge" id="floating-badge" style="display: none;">
+                ⚠️ <span id="floating-count">0</span> Floating Node(s)
+            </div>
+        </main>
+
+        <!-- RIGHT SIDEBAR - NODE INFO -->
+        <aside class="panel info-panel">
+            <div class="panel-header">Selected Node</div>
+            <div class="panel-content" id="node-info">
+                <div style="color: var(--text-secondary); text-align: center; margin-top: 20px;">
+                    Click a node to inspect
+                </div>
+            </div>
+        </aside>
+
+        <!-- TIMELINE -->
+        <section class="panel timeline-panel">
+            <div class="playback-controls">
+                <button class="playback-btn" id="btn-first" title="First Step">⏮</button>
+                <button class="playback-btn" id="btn-prev" title="Previous Step">◀</button>
+                <button class="playback-btn" id="btn-play" title="Play/Pause">▶</button>
+                <button class="playback-btn" id="btn-next" title="Next Step">▶</button>
+                <button class="playback-btn" id="btn-last" title="Last Step">⏭</button>
+                
+                <div class="speed-control">
+                    <label>Speed:</label>
+                    <input type="range" class="speed-slider" id="speed-slider" min="1" max="10" value="5">
+                    <span id="speed-value">1x</span>
+                </div>
+
+                <div class="step-counter">
+                    Step <span id="current-step">0</span> / <span id="total-steps">0</span>
+                </div>
+            </div>
+            <div class="timeline-scrubber">
+                <div class="timeline-track" id="timeline-track"></div>
+            </div>
+        </section>
+
+        <!-- DETAILS PANEL -->
+        <aside class="panel details-panel">
+            <div class="panel-header">Changes & Details</div>
+            <div class="panel-content" id="changes-panel">
+                <div style="color: var(--text-secondary); font-size: 12px;">
+                    Changes between steps will appear here
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="tree_data.js"></script>
+    <script>
+        // ============================================
+        // TREE DEBUGGER v2.0 - Advanced Viewer
+        // ============================================
+
+        class TreeDebugger {
+            constructor(history) {
+                this.history = history;
+                this.currentStep = 0;
+                this.isPlaying = false;
+                this.playSpeed = 1000; // ms per step
+                this.playInterval = null;
+                this.network = null;
+                this.nodeDataMap = new Map();
+                this.selectedNode = null;
+
+                this.init();
+            }
+
+            init() {
+                this.setupNetwork();
+                this.setupTimeline();
+                this.setupHistoryList();
+                this.setupMethodFilter();
+                this.setupControls();
+                this.setupKeyboardShortcuts();
+                this.updateView();
+            }
+
+            // === NETWORK SETUP ===
+            setupNetwork() {
+                const container = document.getElementById('tree-canvas');
+                const options = {
+                    layout: {
+                        hierarchical: {
+                            direction: 'UD',
+                            sortMethod: 'directed',
+                            levelSeparation: 80,
+                            nodeSpacing: 60,
+                            treeSpacing: 100,
+                            parentCentralization: true,
+                        }
+                    },
+                    nodes: {
+                        shape: 'circle',
+                        size: 25,
+                        font: { size: 14, color: '#ffffff', face: 'Segoe UI' },
+                        borderWidth: 2,
+                        shadow: { enabled: true, size: 5, x: 2, y: 2 }
+                    },
+                    edges: {
+                        arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+                        color: { color: '#555', highlight: '#007acc' },
+                        width: 2,
+                        smooth: { type: 'cubicBezier', roundness: 0.5 }
+                    },
+                    physics: false,
+                    interaction: {
+                        hover: true,
+                        selectConnectedEdges: false
+                    }
+                };
+
+                this.network = new vis.Network(container, { nodes: [], edges: [] }, options);
+
+                // Node click handler
+                this.network.on('click', (params) => {
+                    if (params.nodes.length > 0) {
+                        this.selectNode(params.nodes[0]);
+                    } else {
+                        this.clearNodeSelection();
+                    }
+                });
+            }
+
+            // === TIMELINE SETUP ===
+            setupTimeline() {
+                const track = document.getElementById('timeline-track');
+                track.innerHTML = '';
+
+                this.history.forEach((entry, index) => {
+                    const marker = document.createElement('div');
+                    marker.className = 'timeline-marker';
+                    if (entry.action.includes('Entering method')) {
+                        marker.classList.add('method-start');
+                    }
+                    marker.title = `Step ${index}: ${entry.action}`;
+                    marker.addEventListener('click', () => this.goToStep(index));
+                    track.appendChild(marker);
+                });
+
+                document.getElementById('total-steps').textContent = this.history.length;
+            }
+
+            // === HISTORY LIST ===
+            setupHistoryList() {
+                const list = document.getElementById('history-list');
+                list.innerHTML = '';
+
+                this.history.forEach((entry, index) => {
+                    const item = document.createElement('li');
+                    item.className = 'history-item';
+                    if (entry.action.includes('Entering method')) {
+                        item.classList.add('method-start');
+                    }
+                    item.innerHTML = `
+                        <div class="history-step">Step ${index}</div>
+                        <div class="history-action">${entry.action}</div>
+                        <div class="history-method">${entry.method || 'N/A'}</div>
+                    `;
+                    item.addEventListener('click', () => this.goToStep(index));
+                    list.appendChild(item);
+                });
+            }
+
+            // === METHOD FILTER ===
+            setupMethodFilter() {
+                const filter = document.getElementById('method-filter');
+                const methods = [...new Set(this.history.map(e => e.method).filter(Boolean))];
+                
+                methods.forEach(method => {
+                    const option = document.createElement('option');
+                    option.value = method;
+                    option.textContent = method;
+                    filter.appendChild(option);
+                });
+
+                filter.addEventListener('change', () => this.filterHistory());
+                document.getElementById('search-input').addEventListener('input', () => this.filterHistory());
+            }
+
+            filterHistory() {
+                const searchTerm = document.getElementById('search-input').value.toLowerCase();
+                const methodFilter = document.getElementById('method-filter').value;
+                const items = document.querySelectorAll('.history-item');
+
+                items.forEach((item, index) => {
+                    const entry = this.history[index];
+                    const matchesSearch = entry.action.toLowerCase().includes(searchTerm);
+                    const matchesMethod = !methodFilter || entry.method === methodFilter;
+                    item.style.display = matchesSearch && matchesMethod ? 'block' : 'none';
+                });
+            }
+
+            // === PLAYBACK CONTROLS ===
+            setupControls() {
+                document.getElementById('btn-first').addEventListener('click', () => this.goToStep(0));
+                document.getElementById('btn-prev').addEventListener('click', () => this.prevStep());
+                document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
+                document.getElementById('btn-next').addEventListener('click', () => this.nextStep());
+                document.getElementById('btn-last').addEventListener('click', () => this.goToStep(this.history.length - 1));
+
+                const speedSlider = document.getElementById('speed-slider');
+                speedSlider.addEventListener('input', () => {
+                    const value = parseInt(speedSlider.value);
+                    this.playSpeed = 2000 / value;
+                    document.getElementById('speed-value').textContent = (value / 5).toFixed(1) + 'x';
+                });
+            }
+
+            setupKeyboardShortcuts() {
+                document.addEventListener('keydown', (e) => {
+                    switch(e.key) {
+                        case 'ArrowLeft': this.prevStep(); break;
+                        case 'ArrowRight': this.nextStep(); break;
+                        case ' ': e.preventDefault(); this.togglePlay(); break;
+                        case 'Home': this.goToStep(0); break;
+                        case 'End': this.goToStep(this.history.length - 1); break;
+                    }
+                });
+            }
+
+            // === NAVIGATION ===
+            goToStep(index) {
+                if (index >= 0 && index < this.history.length) {
+                    this.currentStep = index;
+                    this.updateView();
+                }
+            }
+
+            prevStep() {
+                if (this.currentStep > 0) {
+                    this.currentStep--;
+                    this.updateView();
+                }
+            }
+
+            nextStep() {
+                if (this.currentStep < this.history.length - 1) {
+                    this.currentStep++;
+                    this.updateView();
+                }
+            }
+
+            togglePlay() {
+                this.isPlaying = !this.isPlaying;
+                const btn = document.getElementById('btn-play');
+                
+                if (this.isPlaying) {
+                    btn.textContent = '⏸';
+                    btn.classList.add('active');
+                    this.playInterval = setInterval(() => {
+                        if (this.currentStep < this.history.length - 1) {
+                            this.nextStep();
+                        } else {
+                            this.togglePlay(); // Stop at end
+                        }
+                    }, this.playSpeed);
+                } else {
+                    btn.textContent = '▶';
+                    btn.classList.remove('active');
+                    clearInterval(this.playInterval);
+                }
+            }
+
+            // === MAIN UPDATE ===
+            updateView() {
+                const entry = this.history[this.currentStep];
+                
+                this.renderTree(entry.snapshot);
+                this.updateHistoryHighlight();
+                this.updateTimelineHighlight();
+                this.updateStepCounter();
+                this.updateStats(entry.snapshot);
+                this.updateChangesPanel();
+            }
+
+            renderTree(snapshot) {
+                if (!snapshot || snapshot.length === 0) {
+                    this.network.setData({ nodes: [], edges: [] });
+                    return;
+                }
+
+                const nodes = [];
+                const edges = [];
+                this.nodeDataMap.clear();
+
+                let floatingCount = 0;
+                const activeNodeId = this.history[this.currentStep].node;
+
+                snapshot.forEach((tree, treeIndex) => {
+                    const isFloating = treeIndex > 0;
+                    if (isFloating) floatingCount++;
+                    this.processNode(tree, null, nodes, edges, isFloating, activeNodeId);
+                });
+
+                // Update floating badge
+                const badge = document.getElementById('floating-badge');
+                if (floatingCount > 0) {
+                    badge.style.display = 'block';
+                    document.getElementById('floating-count').textContent = floatingCount;
+                } else {
+                    badge.style.display = 'none';
+                }
+
+                this.network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+            }
+
+            processNode(node, parentId, nodes, edges, isFloating, activeNodeId) {
+                if (!node) return;
+
+                const nodeId = String(node.id);
+                const isActive = String(activeNodeId) === nodeId;
+                const isVirtual = node.name === 'None';
+
+                // Store node data for info panel
+                this.nodeDataMap.set(nodeId, node);
+
+                // Determine node color
+                let color = '#4a4a4a';
+                let borderColor = '#666';
+                
+                if (isActive) {
+                    color = '#007acc';
+                    borderColor = '#00a2ff';
+                } else if (isFloating) {
+                    color = '#8b4513';
+                    borderColor = '#f14c4c';
+                } else if (isVirtual) {
+                    color = '#2d2d30';
+                    borderColor = '#555';
+                }
+
+                nodes.push({
+                    id: nodeId,
+                    label: isVirtual ? '∅' : node.name,
+                    color: {
+                        background: color,
+                        border: borderColor,
+                        highlight: { background: '#007acc', border: '#00a2ff' }
+                    },
+                    font: { color: isVirtual ? '#666' : '#fff' },
+                    size: isVirtual ? 15 : 25
+                });
+
+                // Process children
+                if (node.children) {
+                    node.children.forEach((child, index) => {
+                        if (child) {
+                            edges.push({
+                                from: nodeId,
+                                to: String(child.id),
+                                label: index === 0 ? 'L' : 'R',
+                                font: { size: 10, color: '#888' }
+                            });
+                            this.processNode(child, nodeId, nodes, edges, isFloating, activeNodeId);
+                        }
+                    });
+                }
+            }
+
+            // === UI UPDATES ===
+            updateHistoryHighlight() {
+                const items = document.querySelectorAll('.history-item');
+                items.forEach((item, index) => {
+                    item.classList.toggle('active', index === this.currentStep);
+                });
+                
+                // Scroll to active item
+                const activeItem = items[this.currentStep];
+                if (activeItem) {
+                    activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+
+            updateTimelineHighlight() {
+                const markers = document.querySelectorAll('.timeline-marker');
+                markers.forEach((marker, index) => {
+                    marker.classList.toggle('active', index === this.currentStep);
+                });
+            }
+
+            updateStepCounter() {
+                document.getElementById('current-step').textContent = this.currentStep + 1;
+            }
+
+            updateStats(snapshot) {
+                if (!snapshot) {
+                    document.getElementById('stat-nodes').textContent = '0';
+                    document.getElementById('stat-height').textContent = '0';
+                    document.getElementById('stat-floating').textContent = '0';
+                    return;
+                }
+
+                let nodeCount = 0;
+                let maxHeight = 0;
+                let floatingTrees = snapshot.length - 1;
+
+                const countNodes = (node, depth = 0) => {
+                    if (!node || node.name === 'None') return;
+                    nodeCount++;
+                    maxHeight = Math.max(maxHeight, depth);
+                    if (node.children) {
+                        node.children.forEach(child => countNodes(child, depth + 1));
+                    }
+                };
+
+                if (snapshot[0]) countNodes(snapshot[0]);
+
+                document.getElementById('stat-nodes').textContent = nodeCount;
+                document.getElementById('stat-height').textContent = maxHeight;
+                document.getElementById('stat-floating').textContent = Math.max(0, floatingTrees);
+            }
+
+            updateChangesPanel() {
+                const panel = document.getElementById('changes-panel');
+                const entry = this.history[this.currentStep];
+                
+                let html = `
+                    <div class="node-card">
+                        <div class="node-card-title">Current Action</div>
+                        <div style="font-size: 12px; color: var(--text-primary);">${entry.action}</div>
+                        <div style="font-size: 11px; color: var(--accent-yellow); margin-top: 5px;">
+                            Method: ${entry.method || 'N/A'}
+                        </div>
+                    </div>
+                `;
+
+                // Show diff if not first step
+                if (this.currentStep > 0) {
+                    const prevEntry = this.history[this.currentStep - 1];
+                    const changes = this.computeChanges(prevEntry.snapshot, entry.snapshot);
+                    
+                    if (changes.length > 0) {
+                        html += `<div class="node-card"><div class="node-card-title">Changes</div>`;
+                        changes.forEach(change => {
+                            html += `<div style="font-size: 11px; margin: 4px 0;">
+                                <span class="change-indicator change-${change.type}">${change.type}</span>
+                                ${change.description}
+                            </div>`;
+                        });
+                        html += `</div>`;
+                    }
+                }
+
+                panel.innerHTML = html;
+            }
+
+            computeChanges(prevSnapshot, currSnapshot) {
+                // Simple change detection - can be expanded
+                const changes = [];
+                
+                const prevNodes = new Set();
+                const currNodes = new Set();
+
+                const collectNodeIds = (node, set) => {
+                    if (!node || node.name === 'None') return;
+                    set.add(node.id);
+                    if (node.children) {
+                        node.children.forEach(c => collectNodeIds(c, set));
+                    }
+                };
+
+                if (prevSnapshot) prevSnapshot.forEach(t => collectNodeIds(t, prevNodes));
+                if (currSnapshot) currSnapshot.forEach(t => collectNodeIds(t, currNodes));
+
+                // Find added nodes
+                currNodes.forEach(id => {
+                    if (!prevNodes.has(id)) {
+                        const node = this.findNodeById(currSnapshot, id);
+                        if (node) changes.push({ type: 'added', description: `Node ${node.name}` });
+                    }
+                });
+
+                // Find removed nodes
+                prevNodes.forEach(id => {
+                    if (!currNodes.has(id)) {
+                        const node = this.findNodeById(prevSnapshot, id);
+                        if (node) changes.push({ type: 'removed', description: `Node ${node.name}` });
+                    }
+                });
+
+                return changes;
+            }
+
+            findNodeById(snapshot, id) {
+                if (!snapshot) return null;
+                for (const tree of snapshot) {
+                    const found = this.searchNode(tree, id);
+                    if (found) return found;
+                }
+                return null;
+            }
+
+            searchNode(node, id) {
+                if (!node) return null;
+                if (node.id === id) return node;
+                if (node.children) {
+                    for (const child of node.children) {
+                        const found = this.searchNode(child, id);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            }
+
+            // === NODE SELECTION ===
+            selectNode(nodeId) {
+                this.selectedNode = nodeId;
+                const nodeData = this.nodeDataMap.get(nodeId);
+                
+                if (!nodeData) {
+                    this.clearNodeSelection();
+                    return;
+                }
+
+                const panel = document.getElementById('node-info');
+                let html = `
+                    <div class="node-card">
+                        <div class="node-card-title">Node: ${nodeData.name}</div>
+                        <div class="node-attr">
+                            <span class="node-attr-key">ID</span>
+                            <span class="node-attr-value">${nodeData.id}</span>
+                        </div>
+                        <div class="node-attr">
+                            <span class="node-attr-key">Parent</span>
+                            <span class="node-attr-value">${nodeData.parent || 'null'}</span>
+                        </div>
+                    </div>
+                `;
+
+                if (nodeData.attributes && Object.keys(nodeData.attributes).length > 0) {
+                    html += `<div class="node-card"><div class="node-card-title">Attributes</div>`;
+                    for (const [key, value] of Object.entries(nodeData.attributes)) {
+                        html += `
+                            <div class="node-attr">
+                                <span class="node-attr-key">${key}</span>
+                                <span class="node-attr-value">${value}</span>
+                            </div>
+                        `;
+                    }
+                    html += `</div>`;
+                }
+
+                panel.innerHTML = html;
+            }
+
+            clearNodeSelection() {
+                this.selectedNode = null;
+                document.getElementById('node-info').innerHTML = `
+                    <div style="color: var(--text-secondary); text-align: center; margin-top: 20px;">
+                        Click a node to inspect
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize when data is loaded
+        if (typeof TREE_HISTORY !== 'undefined') {
+            new TreeDebugger(TREE_HISTORY);
+        } else {
+            console.error('TREE_HISTORY not found. Make sure tree_data.js is loaded.');
+        }
+    </script>
+</body>
+</html>

@@ -310,8 +310,8 @@ class ProxyTree:
         
         # 2. Trap the 'root' attribute
         # This is critical: When 'insert' calls 'self.root', it lands here.
-        if name == config["root"]:
-            root_node = getattr(real_tree, config["root"])
+        if name in [config["root"], config["max"], config["min"]]:
+            root_node = getattr(real_tree, name)
             if root_node is not None:
                 if isinstance(root_node, ProxyNode):
                     return root_node
@@ -350,7 +350,9 @@ user_config = {
     "right": "right",
     "parent": "parent",
     "key": "key",
-    "root": "root"
+    "root": "root", 
+    "max": "max_node",
+    "min": "min_node"
 }
 
 from test_avl import AVLTree, AVLNode
@@ -366,9 +368,14 @@ spy_tree.insert(7, "b")
 spy_tree.insert(8, "c")
 spy_tree.insert(5, "d")
 spy_tree.insert(10, "d")
+spy_tree.insert(11, "d")
+spy_tree.insert(4, "d")
+spy_tree.insert(3, "d")
+spy_tree.insert(2, "d")
 test_node = spy_tree.search(7)[0]
 spy_tree.delete(test_node)
-spy_tree.insert(11, "d")
+spy_tree.finger_insert(12, "e")
+
 
 
 
