@@ -81,7 +81,7 @@ tree.insert(70)
 from tracer import Tracer, ProxyTree
 
 # 1. Define your structure config (tell the spy your attribute names)
-config = {"left": "left", "right": "right", "parent": "parent", "key": "key", "root": "root"}
+config = {"left": "left", "right": "right", "parent": "parent", "key": "key", "root": "root", "max": "max", "min": "min"}
 
 # 2. Initialize the tracer
 tracer = Tracer(config=config)
@@ -91,6 +91,9 @@ real_tree = BinaryTree()
 
 # 4. Wrap it with the Spy!
 spy_tree = ProxyTree(real_tree, tracer, config=config)
+
+# 5. Link tree to tracer
+tracer.set_tree(real_tree)
 
 # ---- Run your operations on the SPY tree ----
 # Every step is now recorded.
